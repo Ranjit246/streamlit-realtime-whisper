@@ -3,3 +3,4 @@ transformers
 SpeechRecognition
 torch
 PyAudio
+streamlit-webrtc
