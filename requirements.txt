@@ -1,4 +1,5 @@
 transformers
 SpeechRecognition
 torch
+portaudio
 PyAudio
