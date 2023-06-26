@@ -1,5 +1,5 @@
+--upgrade pip
 transformers
 SpeechRecognition
 torch
-portaudio
 PyAudio
