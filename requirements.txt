@@ -1,2 +1,4 @@
-ffmpeg
-pyaudio
+transformers
+SpeechRecognition
+torch
+PyAudio
