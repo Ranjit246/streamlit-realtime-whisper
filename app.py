@@ -23,10 +23,6 @@ st.sidebar.header('Audio Parameters')
 ENERGY_THRESHOLD = int(st.sidebar.text_input('Energy Threshold', 1000))
 RECORD_TIMEOUT = float(st.sidebar.text_input('Record Timeout (seconds)', 2))
 PHRASE_TIMEOUT = float(st.sidebar.text_input('Phrase Timeout (seconds)', 3))
-if 'linux' in platform:
-    DEFAULT_MICROPHONE = st.sidebar.text_input('Default Microphone', 'pulse')
-else:
-    DEFAULT_MICROPHONE = ''
 
 args = {
     'model': 'Ranjit/odia_whisper_small_v3.0',
@@ -34,7 +30,6 @@ args = {
     'energy_threshold': ENERGY_THRESHOLD,
     'record_timeout': RECORD_TIMEOUT,
     'phrase_timeout': PHRASE_TIMEOUT,
-    'default_microphone': DEFAULT_MICROPHONE
 }
 
 # The last time a recording was retrieved from the queue.
@@ -49,21 +44,7 @@ recorder.energy_threshold = args['energy_threshold']
 # Definitely do this, dynamic energy compensation lowers the energy threshold dramatically to a point where the SpeechRecognizer never stops recording.
 recorder.dynamic_energy_threshold = False
 
-# Important for Linux users.
-# Prevents permanent application hang and crash by using the wrong Microphone
-if 'linux' in platform:
-    mic_name = args['default_microphone']
-    if not mic_name or mic_name == 'list':
-        st.write("Available microphone devices are:")
-        for index, name in enumerate(sr.Microphone.list_microphone_names()):
-            st.write(f"Microphone with name \"{name}\" found")
-    else:
-        for index, name in enumerate(sr.Microphone.list_microphone_names()):
-            if mic_name in name:
-                source = sr.Microphone(sample_rate=8000, device_index=index)
-                break
-else:
-    source = sr.Microphone(sample_rate=8000)
+source = sr.Microphone(sample_rate=8000)
 
 temp_file = NamedTemporaryFile().name
 transcription = ['']
@@ -87,8 +68,7 @@ def record_callback(_, audio: sr.AudioData) -> None:
 recorder.listen_in_background(source, record_callback, phrase_time_limit=args['record_timeout'])
 
 # Cue the user that we're ready to go.
-print('Model Loaded')
-# st.write("Model loaded.\n")
+st.write("Model loaded.\n")
 
 
 def transcribe(audio):
@@ -128,12 +108,11 @@ def send_receive():
 
                 # Read the transcription.
                 text = transcribe(temp_file).strip()
-                #print(text)
 
                 # If we detected a pause between recordings, add a new item to our transcription.
                 # Otherwise, edit the existing one.
                 if phrase_complete:
-                    transcription[-1] = text
+                    transcription.append(text)
                 else:
                     transcription[-1] = text
 
@@ -154,12 +133,17 @@ def send_receive():
 
 
 # Web user interface
-st.title('🎙️ Real-Time Odia Transcriptor')
+st.title('🎙️ Real-Time Transcription App')
 
-with st.expander('Instructions'):
+with st.expander('About this App'):
     st.markdown('''
-    - Click on Start, Wait for 30 second for once to model load.
-    - Now start Speaking and see what you spoke in next 2 second.
+    This Streamlit app performs real-time transcription using the Whisper ASR model.
+    
+    Libraries used:
+    - `streamlit` - web framework
+    - `speech_recognition` - library for speech recognition and audio recording
+    - `torch` - PyTorch library for deep learning
+    - `transformers` - library for state-of-the-art NLP models
     ''')
 
 col1, col2 = st.columns(2)
