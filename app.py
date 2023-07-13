@@ -2,16 +2,23 @@ import streamlit as st
 import io
 import os
 import speech_recognition as sr
-import torch
 from datetime import datetime, timedelta
 from queue import Queue
-from tempfile import NamedTemporaryFile
+import tempfile
 from time import sleep
 from sys import platform
-from transformers import pipeline
+import librosa
 
-# Initialize ASR pipeline
-pipe = pipeline(model="Ranjit/odia_whisper_small_v3.0")
+from transformers import Wav2Vec2ForCTC, AutoProcessor
+import torch
+
+model_id = "facebook/mms-1b-all"
+
+processor = AutoProcessor.from_pretrained(model_id)
+model = Wav2Vec2ForCTC.from_pretrained(model_id)
+#Add language adapters for Odia ('ory')
+processor.tokenizer.set_target_lang("ory")
+model.load_adapter("ory")
 
 # Session state
 if 'text' not in st.session_state:
@@ -19,10 +26,10 @@ if 'text' not in st.session_state:
     st.session_state['run'] = False
 
 # Audio parameters
-st.sidebar.header('Audio Parameters')
-ENERGY_THRESHOLD = int(st.sidebar.text_input('Energy Threshold', 1000))
-RECORD_TIMEOUT = float(st.sidebar.text_input('Record Timeout (seconds)', 2))
-PHRASE_TIMEOUT = float(st.sidebar.text_input('Phrase Timeout (seconds)', 3))
+
+ENERGY_THRESHOLD = 2000
+RECORD_TIMEOUT = 2.0
+PHRASE_TIMEOUT = 3.0
 
 args = {
     'model': 'Ranjit/odia_whisper_small_v3.0',
@@ -44,13 +51,26 @@ recorder.energy_threshold = args['energy_threshold']
 # Definitely do this, dynamic energy compensation lowers the energy threshold dramatically to a point where the SpeechRecognizer never stops recording.
 recorder.dynamic_energy_threshold = False
 
-source = sr.Microphone(sample_rate=8000)
+# Select microphone based on platform
+if platform == 'linux' or platform == 'linux2':
+    mic_name = args['default_microphone']
+    if not mic_name or mic_name == 'list':
+        st.write("Available microphone devices are:")
+        for index, name in enumerate(sr.Microphone.list_microphone_names()):
+            st.write(f"Microphone with name \"{name}\" found")
+    else:
+        for index, name in enumerate(sr.Microphone.list_microphone_names()):
+            if mic_name in name:
+                source = sr.Microphone(sample_rate=16000, device_index=index)
+                break
+else:
+    source = sr.Microphone(sample_rate=16000)
 
-temp_file = NamedTemporaryFile().name
+temp_file = tempfile.NamedTemporaryFile().name
 transcription = ['']
 
-# with source:
-#     recorder.adjust_for_ambient_noise(source)
+with source as audio_source:
+    recorder.adjust_for_ambient_noise(audio_source)
 
 
 def record_callback(_, audio: sr.AudioData) -> None:
@@ -70,11 +90,14 @@ recorder.listen_in_background(source, record_callback, phrase_time_limit=args['r
 # Cue the user that we're ready to go.
 st.write("Model loaded.\n")
 
-
 def transcribe(audio):
-    text = pipe(audio)["text"]
+    y,_ = librosa.load(audio)
+    inputs = processor(y, sampling_rate=16000, return_tensors="pt")
+    with torch.no_grad():
+        outputs = model(**inputs).logits
+    ids = torch.argmax(outputs, dim=-1)[0]
+    text = processor.decode(ids)
     return text
-
 
 def send_receive():
     global phrase_time, last_sample, transcription
@@ -108,11 +131,12 @@ def send_receive():
 
                 # Read the transcription.
                 text = transcribe(temp_file).strip()
+                #print(text)
 
                 # If we detected a pause between recordings, add a new item to our transcription.
                 # Otherwise, edit the existing one.
                 if phrase_complete:
-                    transcription.append(text)
+                    transcription[-1] = text
                 else:
                     transcription[-1] = text
 
