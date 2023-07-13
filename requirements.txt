@@ -2,3 +2,4 @@ transformers
 SpeechRecognition
 torch
 PyAudio
+librosa
